@@ -1,0 +1,224 @@
+import sys
+
+from flask import Flask, url_for
+from flask import request, abort
+from linebot import (LineBotApi, WebhookHandler)
+from linebot.exceptions import (InvalidSignatureError)
+from linebot.models import (MessageEvent, TextMessage, TextSendMessage, ImageMessage, FlexSendMessage)
+import threading
+import time
+import os
+from pyngrok import ngrok
+
+# 自己新創的檔案
+import const
+import user
+import handle_message
+import chat_gpt
+import calculate
+
+app = Flask(__name__, static_url_path='/static')
+
+# Line - Channel access token (long-lived)
+line_bot_api = LineBotApi(const.LINE_CHANNEL_ACCESS_TOKEN)
+
+# Line - Channel secret
+handler = WebhookHandler(const.LINE_CHANNEL_SECRET)
+
+public_url = None
+
+# Line - Webhook URL
+@app.route("/callback", methods=['POST'])
+def callback():
+    signature = request.headers['X-Line-Signature']
+
+    body = request.get_data(as_text=True)
+    app.logger.info("Request body: " + body)
+
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+
+    return 'OK'
+
+# Line - 接收文字
+@handler.add(MessageEvent, message=TextMessage)
+def handle_text_message(event):
+    text = event.message.text.strip()
+    userid = event.source.user_id
+
+    # 先判斷使用者是否為已註冊過
+    message_type = user.detect_message_type(userid)
+
+    if message_type == 'logging' and text == "查閱健康紀錄":
+        reply_message = handle_message.line_flex_template(user.get_all_record(userid))
+        reply_main_menu = handle_message.get_main_menu()
+        messages_to_send = [
+            FlexSendMessage(alt_text='您的健康紀錄', contents=reply_message),
+            reply_main_menu
+        ]
+
+    elif message_type == 'logging' and text == "記錄健康":
+        reply_message = handle_message.get_record_health_text()
+        messages_to_send = [
+            TextSendMessage(text=reply_message),
+        ]
+
+    elif message_type == 'logging' and text == "記錄飲食":
+        reply_message = handle_message.get_record_diet_text()
+        messages_to_send = [
+            TextSendMessage(text=reply_message),
+        ]
+
+    elif message_type == 'logging' and text == "飲食&運動建議":
+        reply_message = chat_gpt.chatgpt_health_suggetion(userid)
+        reply_main_menu = handle_message.get_main_menu()
+        messages_to_send = [
+            TextSendMessage(text=reply_message),
+            reply_main_menu
+        ]
+
+    else:
+        info_type = chat_gpt.chatgpt_detect_info_type(text)
+        if info_type == 'basic':
+            formated_text = chat_gpt.chatgpt_format_basic_profile(text)
+            error = False
+            required_fields = ['性別', '生日', '身高', '體重', '目標']
+            for field in required_fields:
+                if field not in formated_text:
+                    error = True
+                    messages_to_send = [
+                        TextSendMessage(text=f"請確認「{field}」是否正確填寫"),
+                    ]
+                    break
+
+            if not error:
+                records = user.convert_types(formated_text)
+                user.basic_record_save(records, userid)
+
+                # chat gpt 回覆「健康風險評估與建議」
+                question = user.basic_record_description(records)[1]
+                reply_text = user.basic_record_description(records)[
+                                 0] + "\n\n" + "📍 健康風險評估與建議:" + "\n" + chat_gpt.chatgpt_basic(
+                    question) + '\n\n'
+                reply_main_menu = handle_message.get_main_menu()
+                messages_to_send = [
+                    TextSendMessage(text=reply_text),
+                    reply_main_menu
+                ]
+
+        elif message_type == 'registering':
+            messages_to_send = [
+                TextSendMessage(text=handle_message.get_first_login_text())
+            ]
+
+        elif info_type == 'health':
+            format_health = chat_gpt.chatgpt_format_health_record(text)
+            if format_health != 'false':
+                health_data = user.convert_types(format_health)
+                reply_message = user.health_record_save_and_reply(health_data, userid)
+                reply_main_menu = handle_message.get_main_menu()
+                messages_to_send = [
+                    TextSendMessage(text=reply_message),
+                    reply_main_menu
+                ]
+            else:
+                reply_message = '資料錯誤，請依格式輸入健康資訊。'
+                messages_to_send = [
+                    TextSendMessage(text=reply_message),
+                ]
+
+        elif info_type == 'diet':
+            format_diet = chat_gpt.chatgpt_format_diet_record(text)
+            if format_diet != 'false':
+                reply_message = user.diet_record_save_and_reply({'飲食內容': format_diet}, userid)
+                reply_main_menu = handle_message.get_main_menu()
+                messages_to_send = [
+                    TextSendMessage(text=reply_message),
+                    reply_main_menu
+                ]
+            else:
+                reply_message = '資料錯誤，請輸入「食物名稱」或「料理名稱」。'
+                messages_to_send = [
+                    TextSendMessage(text=reply_message),
+                ]
+
+        else:
+            if calculate.chinese_char_count(text) > 5:
+                reply_message = chat_gpt.chatgpt_normal_question_reply(text)
+                messages_to_send = [
+                    TextSendMessage(text=reply_message),
+                ]
+            else:
+                reply_main_menu = handle_message.get_main_menu()
+                messages_to_send = [
+                    reply_main_menu
+                ]
+
+    line_bot_api.reply_message(event.reply_token, messages_to_send)
+
+# Line - 接收圖片
+@handler.add(MessageEvent, message=ImageMessage)
+def handle_image_message(event):
+    message_id = event.message.id
+
+    # 確保圖片儲存到 static/images 資料夾
+    static_folder = os.path.join(app.root_path, 'static', 'images')
+    if not os.path.exists(static_folder):
+        os.makedirs(static_folder)
+
+    # 以訊息 ID 作為檔名
+    filename = f"{message_id}.jpg"
+    image_path = os.path.join(static_folder, filename)
+
+    # 取得圖片內容並儲存到本地
+    response = line_bot_api.get_message_content(message_id)
+    with open(image_path, 'wb') as f:
+        for chunk in response.iter_content():
+            f.write(chunk)
+
+    image_url_path = url_for('static', filename=f"images/{filename}")
+
+    # 結合 ngrok URL 和圖片路徑，得到完整的公開 URL
+    public_image_url = f"{public_url}{image_url_path}"
+    print(f"可透過 ngrok 訪問的公開 URL：{public_image_url}")
+
+    gpt_response = chat_gpt.chatgpt_image(public_image_url)
+
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextMessage(text=gpt_response)
+    )
+
+# 主程式
+if __name__ == '__main__':
+    # flask 與 ngrok 的連線端口
+    FLASK_PORT = const.FLASK_PORT
+
+    print(f"Flask 應用程式將在 http://127.0.0.1:{FLASK_PORT} 運行。")
+
+    # 啟動 flask
+    def run_flask_app():
+        app.run(host=const.FLASK_HOST, port=FLASK_PORT, debug=True, use_reloader=False)
+
+    flask_thread = threading.Thread(target=run_flask_app)
+    flask_thread.start()
+
+    print("等待 Flask 應用程式啟動...")
+    time.sleep(3)
+
+    # 啟動 ngrok，打通本機網路對外連線
+    ngrok_auth_token = const.NGROK_AUTH_TOKEN
+    ngrok.set_auth_token(ngrok_auth_token)
+    print("正在啟動 ngrok 隧道...")
+
+    # 建立 ngrok 隧道，連接到 Flask 應用程式的埠號
+    public_url = ngrok.connect(FLASK_PORT).public_url
+    print("-" * 50)
+    print(f"ngrok 隧道已啟動！")
+    print(f"您的 Flask 應用程式現可透過此 URL 訪問：{public_url}")
+
+    # flask 需持續運行，ngrok 隧道才能維持開啟
+    while True:
+       time.sleep(1)

@@ -1,0 +1,9 @@
+.DS_Store
+.idea
+docker
+*__pycache__*
+log
+.venv
+static/images/*
+credentials.json
+const.py
