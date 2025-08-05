@@ -24,7 +24,6 @@ def chatgpt_basic(Q):
 def chatgpt_calorie(diet_text):
     format = "- Subway 雞肉淺艇堡：約 400 大卡\n"
     format += "- 草莓蛋糕：約 250 大卡\n"
-    format += "總熱量約為： 650 大卡。"
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",

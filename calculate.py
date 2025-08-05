@@ -53,3 +53,19 @@ def chinese_char_count(text):
     # 用正則表達式找出所有中文字符（Unicode 範圍）
     chinese_chars = re.findall(r'[\u4e00-\u9fff]', text)
     return len(chinese_chars)
+def total_calories(diet_records):
+    """
+    計算飲食紀錄中的總熱量。
+    :param diet_records:
+    :return:總熱量數字
+    """
+    total = 0
+    for record in diet_records:
+        try:
+            # 從描述中擷取大卡前的數字
+            match = re.search(r'(\d+)\s*大卡', record)
+            if match:
+                total += int(match.group(1))
+        except ValueError:
+            continue  # 如果轉換失敗，則跳過該紀錄
+    return total if total > 0 else None
