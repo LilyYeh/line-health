@@ -128,7 +128,7 @@ def chatgpt_format_diet_record(diet_record):
     ]
 
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-3.5-turbo",
         messages=messages,
         max_tokens=1000
     )

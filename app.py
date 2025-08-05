@@ -1,3 +1,4 @@
+import datetime
 import sys
 
 from flask import Flask, url_for
@@ -13,6 +14,7 @@ from pyngrok import ngrok
 # 自己新創的檔案
 import const
 import user
+import user_repo
 import handle_message
 import chat_gpt
 import calculate
@@ -47,12 +49,17 @@ def callback():
 def handle_text_message(event):
     text = event.message.text.strip()
     userid = event.source.user_id
+    repo = user_repo.UserRepo()  # 建立 UserRepo 實例
 
     # 先判斷使用者是否為已註冊過
-    message_type = user.detect_message_type(userid)
+    message_type = 'registering'
+    if repo.get_user_by_userid(userid):
+        message_type = 'logging'
 
     if message_type == 'logging' and text == "查閱健康紀錄":
-        reply_message = handle_message.line_flex_template(user.get_all_record(userid))
+        # 取得健康紀錄（以 SQLite 取代原 user.get_all_record）
+        reply_message = handle_message.line_flex_template( repo.get_all_record(userid))
+        users = repo.get_user_by_userid(userid)
         reply_main_menu = handle_message.get_main_menu()
         messages_to_send = [
             FlexSendMessage(alt_text='您的健康紀錄', contents=reply_message),
@@ -94,14 +101,14 @@ def handle_text_message(event):
                     break
 
             if not error:
+                # 轉換型別
                 records = user.convert_types(formated_text)
-                user.basic_record_save(records, userid)
+                # 新增或更新使用者基本資料
+                repo.create_user(records, userid)
 
                 # chat gpt 回覆「健康風險評估與建議」
                 question = user.basic_record_description(records)[1]
-                reply_text = user.basic_record_description(records)[
-                                 0] + "\n\n" + "📍 健康風險評估與建議:" + "\n" + chat_gpt.chatgpt_basic(
-                    question) + '\n\n'
+                reply_text = user.basic_record_description(records)[0] + "\n\n" + "📍 健康風險評估與建議:" + "\n" + chat_gpt.chatgpt_basic(question) + '\n\n'
                 reply_main_menu = handle_message.get_main_menu()
                 messages_to_send = [
                     TextSendMessage(text=reply_text),
@@ -117,7 +124,9 @@ def handle_text_message(event):
             format_health = chat_gpt.chatgpt_format_health_record(text)
             if format_health != 'false':
                 health_data = user.convert_types(format_health)
-                reply_message = user.health_record_save_and_reply(health_data, userid)
+                # 新增健康紀錄
+                repo.create_health_record({**health_data, 'userid': userid})
+                reply_message = '✅ 健康紀錄已儲存！'
                 reply_main_menu = handle_message.get_main_menu()
                 messages_to_send = [
                     TextSendMessage(text=reply_message),
@@ -132,7 +141,11 @@ def handle_text_message(event):
         elif info_type == 'diet':
             format_diet = chat_gpt.chatgpt_format_diet_record(text)
             if format_diet != 'false':
-                reply_message = user.diet_record_save_and_reply({'飲食內容': format_diet}, userid)
+                # 新增飲食紀錄，將 datetime.datetime 改為 ISO 格式字串
+                calories = chat_gpt.chatgpt_calorie(format_diet)
+                now_str = datetime.datetime.now().isoformat()
+                repo.create_diet_record({'飲食內容': format_diet, 'userid': userid, '紀錄日期': now_str, '總熱量': calories})
+                reply_message = '✅ 飲食紀錄已儲存！'
                 reply_main_menu = handle_message.get_main_menu()
                 messages_to_send = [
                     TextSendMessage(text=reply_message),
