@@ -69,7 +69,7 @@ class UserRepo:
         record['年齡'] = calculate.calculate_age(record['生日'])
         if health_record is not None:
             record['體重'] = health_record[len(health_record) - 1]['體重']
-            record['喝水量'] =calculate.total_water_intake([record['喝水量'] for record in health_record])
+            record['喝水量'] =calculate.total_water_intake([record['喝水量'] for record in health_record if record['紀錄日期'] >= record_date])
             record['運動等級'] = health_record[len(health_record) - 1]['運動等級']
 
         record['BMI'] = calculate.calculate_bmi(record['體重'], record['身高'])
