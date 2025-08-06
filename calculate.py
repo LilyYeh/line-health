@@ -69,3 +69,17 @@ def total_calories(diet_records):
         except ValueError:
             continue  # 如果轉換失敗，則跳過該紀錄
     return total if total > 0 else None
+def total_water_intake(diet_records):
+    """
+    總喝水量計算
+    :param diet_records:
+    :return:
+    """
+    total = 0
+    for record in diet_records:
+        try:
+            # 從描述中擷取水量前的數字
+                total += int(record)
+        except ValueError:
+            continue  # 如果轉換失敗，則跳過該紀錄
+    return total if total > 0 else None

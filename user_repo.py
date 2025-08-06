@@ -60,15 +60,17 @@ class UserRepo:
         return self.db.create_diet_record(data)
 
     def get_all_record(self,userid):
+        record_date = datetime.today().date().isoformat()
         basic_inform = self.get_user_by_userid(userid)
         health_record = self.get_health_records_by_userid(userid)
-        record_date = health_record['紀錄日期'] if len(health_record) != 0 else datetime.today().date().isoformat()
-        diet_records = self.get_diet_records_by_userid(userid )
-
+        diet_records = self.get_diet_records_by_userid(userid)
+        diet_records = [item for item in diet_records if item['紀錄日期'] >= record_date]
         record = basic_inform
         record['年齡'] = calculate.calculate_age(record['生日'])
         if health_record is not None:
-            record.update(health_record)
+            record['體重'] = health_record[len(health_record) - 1]['體重']
+            record['喝水量'] =calculate.total_water_intake([record['喝水量'] for record in health_record])
+            record['運動等級'] = health_record[len(health_record) - 1]['運動等級']
 
         record['BMI'] = calculate.calculate_bmi(record['體重'], record['身高'])
 
@@ -84,6 +86,7 @@ class UserRepo:
             record['總熱量'] = '\n'.join(str(item['總熱量']) for item in diet_records) if diet_records else ''
             record['總熱量'] += f"\n總熱量約為：{calculate.total_calories([item['總熱量'] for item in diet_records])} 大卡"
         return record
+
     def close(self):
         """
         關閉資料庫連線。

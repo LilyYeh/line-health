@@ -3,6 +3,7 @@ from openai import OpenAI, APIStatusError
 import const
 import handle_message
 import user
+import user_repo
 
 # chatGPT api
 OPEN_AI_TOKEN = const.OPENAI_API_KEY
@@ -29,7 +30,7 @@ def chatgpt_calorie(diet_text):
         model="gpt-4o-mini",
         messages = [
             {"role":"system", "content":"以下對話請用繁體中文回答問題"},
-            {"role":"user", "content": f"請幫我計算「{diet_text}」的熱量及總熱量，回傳格式如：{format}。只需回傳格式內容，不需要其餘文字"}
+            {"role":"user", "content": f"請幫我計算「{diet_text}」的熱量，回傳格式如：{format}。只需回傳格式內容，不需要其餘文字"}
         ]
     )
 
@@ -134,7 +135,8 @@ def chatgpt_format_diet_record(diet_record):
     return response.choices[0].message.content.strip()
 
 def chatgpt_health_suggetion(userid):
-    record = handle_message.dict_to_text(user.get_all_record(userid))
+    repo = user_repo.UserRepo()
+    record = handle_message.dict_to_text(repo.get_all_record(userid))
     messages = [
         {"role": "system", "content": "你是一位營養師，同時也是一位健身教練，你會依照一個人的「性別、年齡、年齡、身高、體重、目標、飲食、喝水量、運動強度」，給我飲食與運動建議。請用繁體中文回答，回答請在 100 字以內。"},
         {"role": "user",

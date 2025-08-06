@@ -125,6 +125,7 @@ def handle_text_message(event):
             if format_health != 'false':
                 health_data = user.convert_types(format_health)
                 # 新增健康紀錄
+                health_data['紀錄日期'] =  datetime.datetime.now().isoformat()
                 repo.create_health_record({**health_data, 'userid': userid})
                 reply_message = '✅ 健康紀錄已儲存！'
                 reply_main_menu = handle_message.get_main_menu()
@@ -143,8 +144,10 @@ def handle_text_message(event):
             if format_diet != 'false':
                 # 新增飲食紀錄，將 datetime.datetime 改為 ISO 格式字串
                 calories = chat_gpt.chatgpt_calorie(format_diet)
+                calories = calories.split('\n')
                 now_str = datetime.datetime.now().isoformat()
-                repo.create_diet_record({'飲食內容': format_diet, 'userid': userid, '紀錄日期': now_str, '總熱量': calories})
+                for mat in calories:
+                    repo.create_diet_record({'飲食內容': format_diet, 'userid': userid, '紀錄日期': now_str, '總熱量': mat})
                 reply_message = '✅ 飲食紀錄已儲存！'
                 reply_main_menu = handle_message.get_main_menu()
                 messages_to_send = [

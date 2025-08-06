@@ -6,6 +6,7 @@ from datetime import datetime
 import calculate
 import chat_gpt
 import const
+import user
 
 shared_link = const.GOOGLE_SHEET_LINK
 gc = gspread.service_account(filename=const.SERVICE_ACCOUNT_FILE)
@@ -220,7 +221,7 @@ def get_all_record(userid):
     record_date = health_record['紀錄日期'] if health_record is not None else datetime.today().date().isoformat()
     diet_record = get_diet_record(userid, record_date)
 
-    record = basic_inform
+    record = user.convert_types(basic_inform)
     if health_record is not None:
         record.update(health_record)
 
