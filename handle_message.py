@@ -1,5 +1,10 @@
 from datetime import datetime
-from linebot.models import TemplateSendMessage, ButtonsTemplate,MessageAction
+from linebot import LineBotApi
+from linebot.models import TemplateSendMessage, ButtonsTemplate, MessageAction
+from linebot.models import RichMenu, RichMenuSize, RichMenuArea, RichMenuBounds
+
+import calculate
+import const
 
 #註冊基本資料
 def get_first_login_text():
@@ -64,6 +69,51 @@ def get_main_menu():
         )
     )
 
+# 功能選單(圖文選單)
+def set_line_main_menu():
+    img_path = const.RICH_MENU
+    line_bot_api = LineBotApi(const.LINE_CHANNEL_ACCESS_TOKEN)
+    rich_menu_to_create = RichMenu(
+        size=RichMenuSize(width=2500, height=843),
+        selected=True,
+        name="健康管理選單",
+        chat_bar_text="健康選單",
+        areas=[
+            RichMenuArea(bounds=RichMenuBounds(x=0, y=0, width=625, height=843),
+                         action=MessageAction(label='查閱健康紀錄', text='查閱健康紀錄')),
+            RichMenuArea(bounds=RichMenuBounds(x=625, y=0, width=625, height=843),
+                         action=MessageAction(label='記錄飲食', text='記錄飲食')),
+            RichMenuArea(bounds=RichMenuBounds(x=1250, y=0, width=625, height=843),
+                         action=MessageAction(label='記錄健康', text='記錄健康')),
+            RichMenuArea(bounds=RichMenuBounds(x=1875, y=0, width=625, height=843),
+                         action=MessageAction(label='飲食&運動建議', text='飲食&運動建議'))
+        ]
+    )
+
+    rich_menu_id = line_bot_api.create_rich_menu(rich_menu=rich_menu_to_create)
+    print("建立成功，Rich Menu ID:", rich_menu_id)
+
+    with open(img_path, 'rb') as f:
+        line_bot_api.set_rich_menu_image(rich_menu_id, "image/jpeg", f)
+
+    line_bot_api.set_default_rich_menu(rich_menu_id)
+    print("已設定為預設選單")
+
+def basic_record_description(record):
+    age = calculate.calculate_age(record['生日'])
+    height = record['身高']
+    weight = record['體重']
+    gender = record['性別']
+    bmi = calculate.calculate_bmi(weight, height)
+    calorie = calculate.calculate_daily_calories(weight, height, age, gender)
+    water = calculate.calculate_daily_water_intake(weight)
+    bmicate = calculate.classify_bmi(bmi)
+    result_reply = f"✅ 已成功建立您的基本資料。\n\n"
+    result_reply += f"📊 您的BMI為 {bmi}，屬於體型{bmicate}族群。\n\n"
+    result_reply += f"📌 建議每天攝取熱量 {calorie} 大卡，以及至少喝 {water}ml 的水。"
+    result_gpt = f"你是一位營養師 請根據bmi{bmi}，年齡{age}，性別{gender}這些資訊，提供約50字內的健康風險評估與改善建議"
+    return result_reply, result_gpt
+
 def dict_to_text(dict):
     text = ""
     for key, value in dict.items():
@@ -71,19 +121,6 @@ def dict_to_text(dict):
     return text
 
 def line_flex_template(record):
-    contents = []
-    if '總熱量' in record:
-        lines = [line.strip() for line in record['總熱量'].split('\n')]
-        for i, line in enumerate(lines):
-            content_item = {
-                "type": "text",
-                "text": line,
-                "size": "sm",
-                "weight": "bold" if "總熱量" in line else "regular",  # 總熱量加粗
-                "color": "#1DB446" if "總熱量" in line else "#000000"  # 總熱量上色
-            }
-            contents.append(content_item)
-
     flex_message_json = {
         "type": "bubble",
         "body": {
@@ -150,23 +187,24 @@ def line_flex_template(record):
         }
     }
 
-    if '運動等級' in record or '喝水量' in record:
-        health_record_content = []
-        if '運動等級' in record:
-            health_record_content.append({
-                "type": "text",
-                "text": f"運動等級: {record['運動等級']}",
-                "size": "sm",
-                "flex": 1
-            })
-        if '喝水量' in record:
-            health_record_content.append({
-                "type": "text",
-                "text": f"喝水量: {record['喝水量']} ml",
-                "size": "sm",
-                "flex": 1
-            })
+    # 健康紀錄
+    health_record_content = []
+    if '運動等級' in record:
+        health_record_content.append({
+            "type": "text",
+            "text": f"運動等級: {record['運動等級']}",
+            "size": "sm",
+            "flex": 1
+        })
+    if '喝水量' in record:
+        health_record_content.append({
+            "type": "text",
+            "text": f"喝水量: {record['喝水量']} ml",
+            "size": "sm",
+            "flex": 1
+        })
 
+    if len(health_record_content) > 0:
         flex_message_json['body']['contents'].extend([
             {
                 "type": "box",
@@ -176,7 +214,7 @@ def line_flex_template(record):
             }
         ])
 
-
+    # BMI
     flex_message_json['body']['contents'].extend([
         {
             "type": "separator",
@@ -205,7 +243,21 @@ def line_flex_template(record):
         },
     ])
 
-    if len(contents) > 0:
+    # 飲食記錄
+    diet_record_content = []
+    if '總熱量' in record:
+        lines = [line.strip() for line in record['總熱量'].split('\n')]
+        for i, line in enumerate(lines):
+            content_item = {
+                "type": "text",
+                "text": line,
+                "size": "sm",
+                "weight": "bold" if "總熱量" in line else "regular",  # 總熱量加粗
+                "color": "#1DB446" if "總熱量" in line else "#000000"  # 總熱量上色
+            }
+            diet_record_content.append(content_item)
+
+    if len(diet_record_content) > 0:
         flex_message_json['body']['contents'].extend([
             {
                 "type": "separator",
@@ -222,7 +274,7 @@ def line_flex_template(record):
                 "type": "box",
                 "layout": "vertical",
                 "margin": "md",
-                "contents": contents  # 直接將內容列表放進來
+                "contents": diet_record_content
             }
         ])
 

@@ -2,7 +2,6 @@ from openai import OpenAI, APIStatusError
 
 import const
 import handle_message
-import user
 import user_repo
 
 # chatGPT api
@@ -25,6 +24,7 @@ def chatgpt_basic(Q):
 def chatgpt_calorie(diet_text):
     format = "- Subway 雞肉淺艇堡：約 400 大卡\n"
     format += "- 草莓蛋糕：約 250 大卡\n"
+    format += "總熱量：約 550 大卡\n"
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -91,7 +91,10 @@ def chatgpt_format_basic_profile(basic_profile_text):
 
     messages = [
         {"role": "system", "content": "以下對話請用繁體中文回答問題，只回傳格式化後的訊息即可"},
-        {"role": "user", "content": f"請幫我格式化使用者的文字訊息，格式化範例如：{format}。使用者的文字訊息如下：{basic_profile_text}。只需回傳格式化後的文字即可。若文字訊息不含性別、生日、身高、體重、目標等基本資料或資料模糊或資料錯誤，則回傳一個字'false'"}
+        {"role": "user",
+         "content": f"請先幫我判斷{basic_profile_text}是否含有「性別、生日、身高、體重、目標」等數值，" +
+                    f"回傳範例如下所述：若缺少'生日'，則回傳'請確認「生日」是否正確填寫'; 若缺少 '生日' '身高'，則回傳'請確認「生日、身高」是否正確填寫'; 以此類推。" +
+                    f"若無缺值，請幫我格式化，格式化範例如：{format}。"}
     ]
 
     response = client.chat.completions.create(
@@ -120,15 +123,18 @@ def chatgpt_format_health_record(health_record):
     return response.choices[0].message.content.strip()
 
 def chatgpt_format_diet_record(diet_record):
-    format = "水餃10顆、雞胸肉1份、"
+    format = "水餃10顆\n"
+    format += "雞胸肉1份\n"
+    format += "火腿蛋餅1份\n"
+
     messages = [
         {"role": "system", "content": "以下對話請用繁體中文回答問題，只回傳格式化後的訊息即可"},
         {"role": "user",
-         "content": f"請幫我格式化使用者的文字訊息，格式化範例如：{format}，格式化後的訊息最後不要加「句點」。使用者的文字訊息如下：{diet_record}。請幫我判斷此文字訊息是否含「食物名稱、料理名稱」等文字，若有食物以外的文字，則回傳一個字'false'。"}
+         "content": f"請先幫我判斷此文字訊息是否只含「食物名稱、料理名稱」等文字，若有食物以外的文字，則回傳一個字'false'; 若只含「食物名稱、料理名稱」等文字，請幫我格式化此文字：{diet_record}，格式化範例如：{format}。"}
     ]
 
     response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4o",
         messages=messages,
         max_tokens=1000
     )

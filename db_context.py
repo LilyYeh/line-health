@@ -25,10 +25,10 @@ class DbContext:
             CREATE TABLE IF NOT EXISTS user (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 userid TEXT NOT NULL,
+                性別 TEXT,
+                生日 TEXT,
                 身高 Double,
                 體重 Double,
-                生日 TEXT,
-                性別 TEXT,
                 目標 TEXT,
                 紀錄日期 TEXT
             )
@@ -50,8 +50,8 @@ class DbContext:
                 userid TEXT NOT NULL,
                 體重 INTEGER,
                 喝水量 INTEGER,
-                紀錄日期 TEXT,
-                運動等級 TEXT
+                運動等級 TEXT,
+                紀錄日期 TEXT
             )
             '''
             self.conn.execute(sql)
@@ -68,10 +68,9 @@ class DbContext:
             sql = '''
             CREATE TABLE IF NOT EXISTS diet_record (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                飲食內容 TEXT,
                 userid TEXT NOT NULL,
-                紀錄日期 TEXT,
-                總熱量 INTEGER
+                飲食內容 TEXT,
+                紀錄日期 TEXT
             )
             '''
             self.conn.execute(sql)
@@ -105,12 +104,13 @@ class DbContext:
             cur = self.conn.cursor()
             cur.execute(sql, (userid,))
             row = cur.fetchone()
-            if row:
-                columns = [desc[0] for desc in cur.description]
-                result = dict(zip(columns, row))
-                result['table'] = 'user'
-                return result
-            return None
+            if row is None:
+                return None
+
+            columns = [desc[0] for desc in cur.description]
+            result = dict(zip(columns, row))
+            result['table'] = 'user'
+            return result
         except Error as e:
             print(f"查詢 user 失敗: {e}")
             return None
@@ -155,22 +155,39 @@ class DbContext:
             print(f"新增 health_record 失敗: {e}")
             return None
 
-    def get_health_records_by_userid(self, userid):
+    def update_health_record(self, userid, record_date, data):
         try:
-            sql = 'SELECT * FROM health_record WHERE userid = ?;'
+            sql = '''UPDATE health_record SET 體重=?, 喝水量=?, 運動等級=? WHERE userid=? AND 紀錄日期=?;'''
             cur = self.conn.cursor()
-            cur.execute(sql, (userid,))
-            rows = cur.fetchall()
+            cur.execute(sql, (
+                data.get('體重'),
+                data.get('喝水量'),
+                data.get('運動等級'),
+                userid,
+                record_date
+            ))
+            self.conn.commit()
+            return cur.rowcount
+        except Error as e:
+            print(f"更新 user 失敗: {e}")
+            return 0
+
+    def get_health_records_by_userid(self, userid, record_date):
+        try:
+            sql = 'SELECT * FROM health_record WHERE userid = ? AND 紀錄日期=?;'
+            cur = self.conn.cursor()
+            cur.execute(sql, (userid, record_date))
+            row = cur.fetchone()
+            if row is None:
+                return None
+
             columns = [desc[0] for desc in cur.description]
-            results = []
-            for row in rows:
-                record = dict(zip(columns, row))
-                record['table'] = 'health_record'
-                results.append(record)
-            return results
+            result = dict(zip(columns, row))
+            result['table'] = 'health_record'
+            return result
         except Error as e:
             print(f"查詢 health_record 失敗: {e}")
-            return []
+            return None
 
     # diet_record 資料表 CRUD
     def create_diet_record(self, data):
@@ -178,13 +195,12 @@ class DbContext:
         新增一筆 diet_record 資料。
         """
         try:
-            sql = '''INSERT INTO diet_record (飲食內容, userid, 紀錄日期, 總熱量) VALUES (?, ?, ?, ?);'''
+            sql = '''INSERT INTO diet_record (userid, 飲食內容, 紀錄日期) VALUES (?, ?, ?);'''
             cur = self.conn.cursor()
             cur.execute(sql, (
-                data.get('飲食內容'),
                 data.get('userid'),
-                data.get('紀錄日期'),
-                data.get('總熱量')
+                data.get('飲食內容'),
+                data.get('紀錄日期')
             ))
             self.conn.commit()
             return cur.lastrowid
@@ -192,12 +208,14 @@ class DbContext:
             print(f"新增 diet_record 失敗: {e}")
             return None
 
-    def get_diet_records_by_userid(self, userid):
+    def get_diet_records_by_userid(self, userid, record_date):
         try:
-            sql = 'SELECT * FROM diet_record WHERE userid = ?;'
+            sql = 'SELECT * FROM diet_record WHERE userid = ? AND 紀錄日期=?;'
             cur = self.conn.cursor()
-            cur.execute(sql, (userid,))
+            cur.execute(sql, (userid, record_date))
             rows = cur.fetchall()
+            if len(rows) == 0:
+                return None
             columns = [desc[0] for desc in cur.description]
             results = []
             for row in rows:
@@ -207,7 +225,7 @@ class DbContext:
             return results
         except Error as e:
             print(f"查詢 diet_record 失敗: {e}")
-            return []
+            return None
 
     def close(self):
         if self.conn:

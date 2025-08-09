@@ -7,3 +7,4 @@ log
 static/images/*
 credentials.json
 const.py
+*.db

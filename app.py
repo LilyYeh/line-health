@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import sys
 
 from flask import Flask, url_for
@@ -13,7 +13,6 @@ from pyngrok import ngrok
 
 # 自己新創的檔案
 import const
-import user
 import user_repo
 import handle_message
 import chat_gpt
@@ -26,6 +25,9 @@ line_bot_api = LineBotApi(const.LINE_CHANNEL_ACCESS_TOKEN)
 
 # Line - Channel secret
 handler = WebhookHandler(const.LINE_CHANNEL_SECRET)
+
+# Line - Set Rich Menu
+handle_message.set_line_main_menu()
 
 public_url = None
 
@@ -49,7 +51,9 @@ def callback():
 def handle_text_message(event):
     text = event.message.text.strip()
     userid = event.source.user_id
-    repo = user_repo.UserRepo()  # 建立 UserRepo 實例
+
+    # 建立 UserRepo 實例
+    repo = user_repo.UserRepo()
 
     # 先判斷使用者是否為已註冊過
     message_type = 'registering'
@@ -57,13 +61,10 @@ def handle_text_message(event):
         message_type = 'logging'
 
     if message_type == 'logging' and text == "查閱健康紀錄":
-        # 取得健康紀錄（以 SQLite 取代原 user.get_all_record）
-        reply_message = handle_message.line_flex_template( repo.get_all_record(userid))
-        users = repo.get_user_by_userid(userid)
-        reply_main_menu = handle_message.get_main_menu()
+        # 取得健康紀錄
+        reply_message = handle_message.line_flex_template(repo.get_all_record(userid))
         messages_to_send = [
             FlexSendMessage(alt_text='您的健康紀錄', contents=reply_message),
-            reply_main_menu
         ]
 
     elif message_type == 'logging' and text == "記錄健康":
@@ -80,39 +81,38 @@ def handle_text_message(event):
 
     elif message_type == 'logging' and text == "飲食&運動建議":
         reply_message = chat_gpt.chatgpt_health_suggetion(userid)
-        reply_main_menu = handle_message.get_main_menu()
         messages_to_send = [
             TextSendMessage(text=reply_message),
-            reply_main_menu
         ]
 
     else:
         info_type = chat_gpt.chatgpt_detect_info_type(text)
         if info_type == 'basic':
             formated_text = chat_gpt.chatgpt_format_basic_profile(text)
+            print(formated_text)
             error = False
-            required_fields = ['性別', '生日', '身高', '體重', '目標']
-            for field in required_fields:
-                if field not in formated_text:
-                    error = True
-                    messages_to_send = [
-                        TextSendMessage(text=f"請確認「{field}」是否正確填寫"),
-                    ]
-                    break
+            if '請確認' in formated_text:
+                error = True
+                messages_to_send = [
+                    TextSendMessage(text=formated_text),
+                ]
 
             if not error:
                 # 轉換型別
-                records = user.convert_types(formated_text)
+                records = repo.convert_types(formated_text)
                 # 新增或更新使用者基本資料
-                repo.create_user(records, userid)
+                my_user = repo.get_user_by_userid(userid)
+                if my_user is None:
+                    repo.create_user(records, userid)
+                else:
+                    repo.update_user(userid, records)
 
                 # chat gpt 回覆「健康風險評估與建議」
-                question = user.basic_record_description(records)[1]
-                reply_text = user.basic_record_description(records)[0] + "\n\n" + "📍 健康風險評估與建議:" + "\n" + chat_gpt.chatgpt_basic(question) + '\n\n'
-                reply_main_menu = handle_message.get_main_menu()
+                reply = handle_message.basic_record_description(records)
+                question = reply[1]
+                reply_text = reply[0] + "\n\n" + "📍 健康風險評估與建議:" + "\n" + chat_gpt.chatgpt_basic(question)
                 messages_to_send = [
                     TextSendMessage(text=reply_text),
-                    reply_main_menu
                 ]
 
         elif message_type == 'registering':
@@ -123,54 +123,44 @@ def handle_text_message(event):
         elif info_type == 'health':
             format_health = chat_gpt.chatgpt_format_health_record(text)
             if format_health != 'false':
-                health_data = user.convert_types(format_health)
+                health_data = repo.convert_types(format_health)
+
                 # 新增健康紀錄
-                health_data['紀錄日期'] =  datetime.datetime.now().isoformat()
-                repo.create_health_record({**health_data, 'userid': userid})
+                health_data['紀錄日期'] = record_date = datetime.today().strftime('%Y-%m-%d')
+                my_health = repo.get_health_records_by_userid(userid, record_date)
+                if my_health is None:
+                    repo.create_health_record({**health_data, 'userid': userid})
+                else:
+                    repo.update_health_record(userid, record_date, health_data)
+
                 reply_message = '✅ 健康紀錄已儲存！'
-                reply_main_menu = handle_message.get_main_menu()
-                messages_to_send = [
-                    TextSendMessage(text=reply_message),
-                    reply_main_menu
-                ]
             else:
                 reply_message = '資料錯誤，請依格式輸入健康資訊。'
-                messages_to_send = [
-                    TextSendMessage(text=reply_message),
-                ]
+            messages_to_send = [
+                TextSendMessage(text=reply_message)
+            ]
 
         elif info_type == 'diet':
             format_diet = chat_gpt.chatgpt_format_diet_record(text)
             if format_diet != 'false':
-                # 新增飲食紀錄，將 datetime.datetime 改為 ISO 格式字串
-                calories = chat_gpt.chatgpt_calorie(format_diet)
-                calories = calories.split('\n')
-                now_str = datetime.datetime.now().isoformat()
-                for mat in calories:
-                    repo.create_diet_record({'飲食內容': format_diet, 'userid': userid, '紀錄日期': now_str, '總熱量': mat})
+                record_date = datetime.today().strftime('%Y-%m-%d')
+                for food in format_diet.strip().split('\n'):
+                    repo.create_diet_record({'userid': userid, '飲食內容': food.strip(), '紀錄日期': record_date})
                 reply_message = '✅ 飲食紀錄已儲存！'
-                reply_main_menu = handle_message.get_main_menu()
-                messages_to_send = [
-                    TextSendMessage(text=reply_message),
-                    reply_main_menu
-                ]
             else:
                 reply_message = '資料錯誤，請輸入「食物名稱」或「料理名稱」。'
-                messages_to_send = [
-                    TextSendMessage(text=reply_message),
-                ]
+            messages_to_send = [
+                TextSendMessage(text=reply_message),
+            ]
 
         else:
             if calculate.chinese_char_count(text) > 5:
                 reply_message = chat_gpt.chatgpt_normal_question_reply(text)
-                messages_to_send = [
-                    TextSendMessage(text=reply_message),
-                ]
             else:
-                reply_main_menu = handle_message.get_main_menu()
-                messages_to_send = [
-                    reply_main_menu
-                ]
+                reply_message = "請點擊功能選單 ⬇️"
+            messages_to_send = [
+                TextSendMessage(text=reply_message),
+            ]
 
     line_bot_api.reply_message(event.reply_token, messages_to_send)
 
