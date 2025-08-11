@@ -3,6 +3,7 @@ import sys
 
 from flask import Flask, url_for
 from flask import request, abort
+from google.api_core.retry import if_exception_type
 from linebot import (LineBotApi, WebhookHandler)
 from linebot.exceptions import (InvalidSignatureError)
 from linebot.models import (MessageEvent, TextMessage, TextSendMessage, ImageMessage, FlexSendMessage)
@@ -30,6 +31,8 @@ handler = WebhookHandler(const.LINE_CHANNEL_SECRET)
 handle_message.set_line_main_menu()
 
 public_url = None
+
+user_context = {}
 
 # Line - Webhook URL
 @app.route("/callback", methods=['POST'])
@@ -86,7 +89,18 @@ def handle_text_message(event):
         ]
 
     else:
-        info_type = chat_gpt.chatgpt_detect_info_type(text)
+        if userid in user_context and text =='加入飲食紀錄':
+
+            format_diet = chat_gpt.chatgpt_format_diet_image(user_context[userid])
+            record_date = datetime.today().strftime('%Y-%m-%d')
+            for food in format_diet.strip().split('\n'):
+                repo.create_diet_record({'userid': userid, '飲食內容': food.strip(), '紀錄日期': record_date})
+            reply_message = '✅ 飲食紀錄已儲存！'
+            info_type = 'break'
+        else:
+            info_type = chat_gpt.chatgpt_detect_info_type(text)
+
+        user_context.pop(userid) if userid in user_context else None
         if info_type == 'basic':
             formated_text = chat_gpt.chatgpt_format_basic_profile(text)
             print(formated_text)
@@ -152,7 +166,10 @@ def handle_text_message(event):
             messages_to_send = [
                 TextSendMessage(text=reply_message),
             ]
-
+        elif info_type == 'break':
+            messages_to_send = [
+                TextSendMessage(text=reply_message),
+            ] 
         else:
             if calculate.chinese_char_count(text) > 5:
                 reply_message = chat_gpt.chatgpt_normal_question_reply(text)
@@ -168,7 +185,7 @@ def handle_text_message(event):
 @handler.add(MessageEvent, message=ImageMessage)
 def handle_image_message(event):
     message_id = event.message.id
-
+    
     # 確保圖片儲存到 static/images 資料夾
     static_folder = os.path.join(app.root_path, 'static', 'images')
     if not os.path.exists(static_folder):
@@ -191,7 +208,8 @@ def handle_image_message(event):
     print(f"可透過 ngrok 訪問的公開 URL：{public_image_url}")
 
     gpt_response = chat_gpt.chatgpt_image(public_image_url)
-
+    user_context[event.source.user_id] = gpt_response  # 儲存 GPT 回覆到使用者上下文
+    
     line_bot_api.reply_message(
         event.reply_token,
         TextMessage(text=gpt_response)

@@ -1,3 +1,4 @@
+from linebot.models import MessageStatistics
 from openai import OpenAI, APIStatusError
 
 import const
@@ -81,7 +82,20 @@ def chatgpt_detect_info_type(text):
         max_tokens=1000
     )
     return response.choices[0].message.content.strip()
-
+def chatgpt_format_diet_image(text):
+    format = "水餃10顆\n"
+    format += "雞胸肉1份\n"
+    format += "火腿蛋餅1份\n"
+    messages = [
+        {"role": "system", "content": text},
+        {"role": "user", "content": f"請幫我描述上述內容的食物名稱，如：{format}"},
+    ]
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=messages,
+        max_tokens=1000
+    )
+    return response.choices[0].message.content.strip()
 def chatgpt_format_basic_profile(basic_profile_text):
     format = "性別：女\n"
     format += "生日：1999-09-06\n"

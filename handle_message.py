@@ -92,10 +92,10 @@ def set_line_main_menu():
 
     rich_menu_id = line_bot_api.create_rich_menu(rich_menu=rich_menu_to_create)
     print("建立成功，Rich Menu ID:", rich_menu_id)
-
-    with open(img_path, 'rb') as f:
-        line_bot_api.set_rich_menu_image(rich_menu_id, "image/jpeg", f)
-
+    if img_path:
+        with open(img_path, 'rb') as f:
+            line_bot_api.set_rich_menu_image(rich_menu_id, "image/jpeg", f)
+    
     line_bot_api.set_default_rich_menu(rich_menu_id)
     print("已設定為預設選單")
 
