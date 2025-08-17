@@ -1,3 +1,4 @@
+import sys
 from datetime import datetime
 from linebot import LineBotApi
 from linebot.models import TemplateSendMessage, ButtonsTemplate, MessageAction
@@ -6,7 +7,8 @@ from linebot.models import RichMenu, RichMenuSize, RichMenuArea, RichMenuBounds
 import calculate
 import const
 
-#註冊基本資料
+
+# 註冊基本資料
 def get_first_login_text():
     return (
         "👋 歡迎使用健康助理 LINE Bot！\n\n"
@@ -19,7 +21,8 @@ def get_first_login_text():
         "📌 請依照上述格式一次輸入，謝謝！"
     )
 
-#記錄健康範例
+
+# 記錄健康範例
 def get_record_health_text():
     return (
         "📝 請協助填寫以下健康資訊 👇\n"
@@ -34,40 +37,14 @@ def get_record_health_text():
         " • 運動等級5：勞力工作者 / 運動員訓練 \n"
     )
 
-#記錄飲食範例
+
+# 記錄飲食範例
 def get_record_diet_text():
     return (
         "📝 請協助填寫飲食資訊 👇\n"
         "🔹輸入範例：水餃10顆 雞胸肉1份\n"
     )
 
-# 功能選單
-def get_main_menu():
-    return TemplateSendMessage(
-        alt_text='AI健康助理',
-        template=ButtonsTemplate(
-            title='請選擇功能',
-            text='請選擇以下功能，或上傳美食圖片，健康助理將為您提供飲食建議。',
-            actions=[
-                MessageAction(
-                    label='查閱健康紀錄',
-                    text='查閱健康紀錄'
-                ),
-                MessageAction(
-                    label='記錄飲食',
-                    text='記錄飲食'
-                ),
-                MessageAction(
-                    label='記錄健康',
-                    text='記錄健康'
-                ),
-                MessageAction(
-                    label='飲食&運動建議',
-                    text='飲食&運動建議'
-                ),
-            ]
-        )
-    )
 
 # 功能選單(圖文選單)
 def set_line_main_menu():
@@ -95,9 +72,10 @@ def set_line_main_menu():
     if img_path:
         with open(img_path, 'rb') as f:
             line_bot_api.set_rich_menu_image(rich_menu_id, "image/jpeg", f)
-    
+
     line_bot_api.set_default_rich_menu(rich_menu_id)
     print("已設定為預設選單")
+
 
 def basic_record_description(record):
     age = calculate.calculate_age(record['生日'])
@@ -114,13 +92,15 @@ def basic_record_description(record):
     result_gpt = f"你是一位營養師 請根據bmi{bmi}，年齡{age}，性別{gender}這些資訊，提供約50字內的健康風險評估與改善建議"
     return result_reply, result_gpt
 
+
 def dict_to_text(dict):
     text = ""
     for key, value in dict.items():
         text += f"{key}: {value}\n"
     return text
 
-def line_flex_template(record):
+
+def line_flex_template_record(record):
     flex_message_json = {
         "type": "bubble",
         "body": {
@@ -279,3 +259,115 @@ def line_flex_template(record):
         ])
 
     return flex_message_json
+
+
+def line_flex_template_suggetion(message_dictionary):
+    diet_suggetion_content = arrange_content(message_dictionary, '飲食建議')
+    exercise_suggetion_content = arrange_content(message_dictionary, '運動建議')
+    other_suggetion_content = message_dictionary['其他建議']
+
+    flex_message_json = {
+        "type": "carousel",
+        "contents": [
+            {
+                "type": "bubble",
+                "header": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [{
+                        "type": "text",
+                        "text": "🍱 飲食建議",
+                        "weight": "bold",
+                        "size": "lg",
+                        "color": "#ffffff"
+                    }],
+                    "backgroundColor": "#8BC34A",
+                    "paddingAll": "md"
+                },
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "spacing": "md",
+                    "contents": diet_suggetion_content
+                }
+            },
+            {
+                "type": "bubble",
+                "header": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [{
+                        "type": "text",
+                        "text": "🏃 運動建議",
+                        "weight": "bold",
+                        "size": "lg",
+                        "color": "#ffffff"
+                    }],
+                    "backgroundColor": "#03A9F4",
+                    "paddingAll": "md"
+                },
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "spacing": "md",
+                    "contents": exercise_suggetion_content
+                }
+            },
+            {
+                "type": "bubble",
+                "header": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [{
+                        "type": "text",
+                        "text": "🛌 其他建議",
+                        "weight": "bold",
+                        "size": "lg",
+                        "color": "#ffffff"
+                    }],
+                    "backgroundColor": "#9C27B0",
+                    "paddingAll": "md"
+                },
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "spacing": "md",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": other_suggetion_content,
+                            "wrap": True,
+                            "size": "sm"
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+
+    return flex_message_json
+
+def arrange_content(message_dictionary, type):
+    diet_suggetion_content = []
+    for key, content in message_dictionary.get(type, {}).items():
+        if not key or not content:
+            continue
+        diet_suggetion_content.append({
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": key,
+                    "weight": "bold",
+                    "size": "md"
+                },
+                {
+                    "type": "text",
+                    "text": content,
+                    "wrap": True,
+                    "size": "sm"
+                }
+            ]
+        })
+    return diet_suggetion_content

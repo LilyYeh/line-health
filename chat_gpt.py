@@ -1,3 +1,5 @@
+import json
+
 from linebot.models import MessageStatistics
 from openai import OpenAI, APIStatusError
 
@@ -155,12 +157,28 @@ def chatgpt_format_diet_record(diet_record):
     return response.choices[0].message.content.strip()
 
 def chatgpt_health_suggetion(userid):
+    format = {
+        '飲食建議': {
+            '熱量攝取': 'ooooo',
+            '營養均衡': 'ooooo',
+            '水分攝取': 'ooooo',
+        },
+        '運動建議': {
+            '輕度有氧運動': 'ooooo',
+            '力量訓練': 'ooooo',
+            '靈活性訓練': 'ooooo',
+        },
+        '其他建議': 'ooooo',
+    }
+
     repo = user_repo.UserRepo()
     record = handle_message.dict_to_text(repo.get_all_record(userid))
     messages = [
-        {"role": "system", "content": "你是一位營養師，同時也是一位健身教練，你會依照一個人的「性別、年齡、年齡、身高、體重、目標、飲食、喝水量、運動強度」，給我飲食與運動建議。請用繁體中文回答，回答請在 100 字以內。"},
+        {"role": "system", "content": "你是一位營養師，同時也是一位健身教練，你會依照一個人的「性別、年齡、年齡、身高、體重、目標、飲食、喝水量、運動強度」，給我飲食與運動建議。請用繁體中文回答。"},
         {"role": "user",
-         "content": f"請依據以下資料來進行分析並給出飲食與運動建議:\n{record}"}
+         "content": f"請依據以下資料來進行分析並給出飲食與運動建議:\n{record}。" +
+                    f"請回傳一個 python 的 dictionary，內容範例如:\n{json.dumps(format)}。"
+         }
     ]
     response = client.chat.completions.create(
         model="gpt-4o",

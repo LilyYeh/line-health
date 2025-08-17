@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 import sys
 
@@ -18,6 +19,8 @@ import user_repo
 import handle_message
 import chat_gpt
 import calculate
+
+
 
 app = Flask(__name__, static_url_path='/static')
 
@@ -65,9 +68,9 @@ def handle_text_message(event):
 
     if message_type == 'logging' and text == "查閱健康紀錄":
         # 取得健康紀錄
-        reply_message = handle_message.line_flex_template(repo.get_all_record(userid))
+        line_flex_template = handle_message.line_flex_template_record(repo.get_all_record(userid))
         messages_to_send = [
-            FlexSendMessage(alt_text='您的健康紀錄', contents=reply_message),
+            FlexSendMessage(alt_text='您的健康紀錄', contents=line_flex_template),
         ]
 
     elif message_type == 'logging' and text == "記錄健康":
@@ -84,8 +87,11 @@ def handle_text_message(event):
 
     elif message_type == 'logging' and text == "飲食&運動建議":
         reply_message = chat_gpt.chatgpt_health_suggetion(userid)
+        cleaned_message = reply_message.replace("```python", "").replace("```", "").strip()
+        message_dictionary = json.loads(cleaned_message)
+        line_flex_template = handle_message.line_flex_template_suggetion(message_dictionary)
         messages_to_send = [
-            TextSendMessage(text=reply_message),
+            FlexSendMessage(alt_text='您的飲食&運動建議',contents=line_flex_template),
         ]
 
     else:

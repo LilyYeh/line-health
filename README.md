@@ -13,6 +13,7 @@
 
 清除 users 資料表資料
 > DELETE FROM user WHERE userid = '';
+> DELETE FROM diet_record `紀錄日期` = '';
 
 離開 sqlite3
 > .exit
